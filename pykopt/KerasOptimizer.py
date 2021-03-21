@@ -1,17 +1,14 @@
+from collections import namedtuple
+
 from deap import base, algorithms
 from deap import creator
 from deap import tools
-from optimizer.Strategy import Strategy
+from pykopt.Strategy import Strategy
 import random
 import numpy as np
-import keras
-from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten
-from keras.layers import Conv2D, MaxPooling2D
-from keras import backend as K
 import pandas as pd
-import matplotlib.pyplot as plt
+
+from pykopt.stats import Stats
 
 
 class KerasOptimizer:
@@ -25,19 +22,24 @@ class KerasOptimizer:
     include_top = False
     crossover_prob = 0.7
     mutation_probability = 0.01
+    strategy = Strategy.MAXIMIZE
 
     toolbox = None
     hyperparam_list = []
     hyperparam_dict = {}
     hyperparam_index_dict = {}
+    hyperparam_index_dict_reverse = {}
 
     model = None
 
     show_graph = False
     train_function = None
 
-    def __init__(self, dataset=None, max_iteration=100, initial_population=20, layer_size=2, classes=2,
-                 input_shape=(224, 224, 3), weights=None, crossover_prob=0.7, mutation_probability=0.01):
+    def __init__(self, model, dataset=None, max_iteration=100, initial_population=20, layer_size=2, classes=2,
+                 input_shape=(224, 224, 3), weights=None, crossover_prob=0.7, mutation_probability=0.01,
+                 train_function=None,
+                 strategy=Strategy.MAXIMIZE):
+        self.model = model
         self.initial_population = initial_population
         self.dataset = dataset
         self.layer_size = layer_size
@@ -48,8 +50,12 @@ class KerasOptimizer:
         self.toolbox = base.Toolbox()
         self.crossover_prob = crossover_prob
         self.mutation_probability = mutation_probability
+        self.train_function = train_function
+        self.strategy = strategy
 
-    def select_optimizer_strategy(self, strategy):
+        self.__select_optimizer_strategy(strategy)
+
+    def __select_optimizer_strategy(self, strategy):
 
         if "FitnessFunc" in globals():
             del globals()["FitnessFunc"]
@@ -65,52 +71,36 @@ class KerasOptimizer:
         creator.create("Individual", list, fitness=creator.FitnessFunc)
 
     def crossover(self, individual1, individual2):
-        return tools.cxTwoPoint(individual1, individual2)
+        return tools.cxOnePoint(individual1, individual2)
 
     def selection(self, individuals, k, tournsize, prob, fit_Attr='fitness'):
         chosen = tools.selTournament(individuals, k, tournsize, fit_Attr)
-
-        if random.random() < prob:
-            new_individual = []
-            random_index = random.randint(0, len(individuals) - 1)
-            selected_individual = individuals[random_index]
-            factor = random.randint(1, 3)
-
-            for i in range(len(selected_individual)):
-                if self.hyperparam_list[i]().__str__().isnumeric():
-                    new_individual.append(selected_individual[i] * factor)
-                else:
-                    new_individual.append(selected_individual[i])
-
-            chosen.append(new_individual)
-
         return chosen
 
-    def add_hyperparameter(self, hyperparam_name, hyperparam_value):
+    def __add_hyperparameter(self, hyperparam_name, hyperparam_value):
         self.toolbox.register(hyperparam_name, random.choice, hyperparam_value)
         self.hyperparam_list.append(getattr(self.toolbox, hyperparam_name))
-        self.hyperparam_dict[hyperparam_name] = len(self.hyperparam_list) - 1
-        self.hyperparam_index_dict[len(self.hyperparam_list) - 1] = self.hyperparam_list[len(self.hyperparam_list) - 1]
-        return self
+        self.hyperparam_dict[hyperparam_name] = hyperparam_value;
+        self.hyperparam_index_dict[hyperparam_name] = len(self.hyperparam_list) - 1
+        self.hyperparam_index_dict_reverse[len(self.hyperparam_list) - 1] = self.hyperparam_list[
+            len(self.hyperparam_list) - 1]
 
-    def show_graph_on_end(self, show=True):
-        self.show_graph = show
+    def set_hyperparameters(self, **kwargs):
+        for key, value in kwargs.items():
+            self.__add_hyperparameter(key, value)
 
-    def run(self, model_function, train_function):
-        self.toolbox.register("individual", tools.initCycle, creator.Individual, self.hyperparam_list,
-                              n=1)
+    def run(self):
+        if self.hyperparam_list.__len__() == 0:
+            raise Exception('Hyperparameters must be set!')
+
+        self.toolbox.register("individual", tools.initCycle, creator.Individual, self.hyperparam_list)
 
         # define the population to be a list of individuals
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", self.evaluate)
-        # self.toolbox.register("mate", tools.cxTwoPoint)
         self.toolbox.register("mate", self.crossover)
         self.toolbox.register("mutate", self.mutate)
-        # self.toolbox.register("select", tools.selTournament, tournsize=3)
         self.toolbox.register("select", self.selection, tournsize=3, prob=1.0)
-
-        self.model = model_function()
-        self.train_function = train_function
 
         population_size = self.initial_population
         number_of_generations = 4
@@ -128,48 +118,20 @@ class KerasOptimizer:
 
         best_parameters = hof[0]  # save the optimal set of parameters
         print('Best parameters:', best_parameters)
-
-        if self.show_graph:
-            gen = log.select("gen")
-            max_ = log.select("max")
-            avg = log.select("avg")
-            min_ = log.select("min")
-
-            evolution = pd.DataFrame({'Generation': gen,
-                                      'Max AUROC': max_,
-                                      'Average': avg,
-                                      'Min AUROC': min_})
-
-            plt.title('Parameter Optimisation')
-            plt.plot(evolution['Generation'], evolution['Min AUROC'], 'b', color='C1',
-                     label='Min')
-            plt.plot(evolution['Generation'], evolution['Average'], 'b', color='C2',
-                     label='Average')
-            plt.plot(evolution['Generation'], evolution['Max AUROC'], 'b', color='C3',
-                     label='Max')
-
-            plt.legend(loc='lower right')
-            plt.ylabel('AUROC')
-            plt.xlabel('Generation')
-            plt.xticks([0, 5, 10, 15, 20])
-            plt.show()
+        stats = Stats(best_params=best_parameters)
+        return stats
 
     def evaluate(self, individual):
         print('START---------------------------------------------')
         print('Individual:', individual)
-        batch_size = individual[self.hyperparam_dict['batch_size']]
-        epochs = individual[self.hyperparam_dict['epochs']]
-        learning_rate = individual[self.hyperparam_dict['learning_rate']]
+        batch_size = individual[self.hyperparam_index_dict['batch_size']]
+        epochs = individual[self.hyperparam_index_dict['epochs']]
+        learning_rate = individual[self.hyperparam_index_dict['learning_rate']]
 
         decay = 1e-6
-
-        score = self.train_function({
-            "batch_size": batch_size,
-            "epochs": epochs,
-            "learning_rate": learning_rate,
-            "decay": decay,
-            "momentum": individual[self.hyperparam_dict['momentum']]
-        })
+        hyperparams_object = namedtuple("HyperParams", self.hyperparam_index_dict.keys())(
+            *individual)
+        score = self.train_function(self.model, hyperparams_object)
         print('Score:', score, 'Individual:', individual)
         print('END--------------------------------------')
         return score
@@ -177,7 +139,7 @@ class KerasOptimizer:
 
     def mutate(self, individual):
         gene = random.randint(0, individual.__len__() - 1)
-        individual[gene] = self.hyperparam_index_dict[gene]()
+        individual[gene] = self.hyperparam_index_dict_reverse[gene]()
         return individual,
 
     def trainModel(self, hyperparams):
