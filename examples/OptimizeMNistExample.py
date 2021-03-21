@@ -4,6 +4,7 @@ from tensorflow.keras import layers
 
 from pykopt.KerasOptimizer import KerasOptimizer
 from pykopt.Strategy import Strategy
+from pykopt.operator import crossover, selection
 
 num_classes = 10
 
@@ -59,11 +60,13 @@ def run():
                                mutation_probability=0.01,
                                crossover_prob=0.7,
                                train_function=train,
-                               strategy=Strategy.MAXIMIZE)
+                               strategy=Strategy.MAXIMIZE,
+                               crossover_method=crossover.one_point,
+                               selection_method=selection.tournament_selection)
 
     optimizer.set_hyperparameters(batch_size=[16, 32], epochs=[1, 2], learning_rate=[0.001, 0.01])
     stats = optimizer.run()
-    print(stats.best_params)
+    print("Stats: ", stats.best_params)
 
 
 if __name__ == '__main__':

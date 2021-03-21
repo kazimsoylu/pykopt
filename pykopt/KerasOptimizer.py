@@ -1,44 +1,28 @@
+import random
 from collections import namedtuple
 
+import numpy as np
 from deap import base, algorithms
 from deap import creator
 from deap import tools
-from pykopt.Strategy import Strategy
-import random
-import numpy as np
-import pandas as pd
 
+from pykopt.Strategy import Strategy
+from pykopt.operator import crossover, selection
 from pykopt.stats import Stats
 
 
 class KerasOptimizer:
-    dataset = None
-    max_iteration = 100
-    initial_population = 50
-    layer_size = 2
-    classes = 2
-    input_shape = None
-    weights = None
-    include_top = False
-    crossover_prob = 0.7
-    mutation_probability = 0.01
-    strategy = Strategy.MAXIMIZE
-
-    toolbox = None
     hyperparam_list = []
     hyperparam_dict = {}
     hyperparam_index_dict = {}
     hyperparam_index_dict_reverse = {}
 
-    model = None
-
-    show_graph = False
-    train_function = None
-
     def __init__(self, model, dataset=None, max_iteration=100, initial_population=20, layer_size=2, classes=2,
                  input_shape=(224, 224, 3), weights=None, crossover_prob=0.7, mutation_probability=0.01,
                  train_function=None,
-                 strategy=Strategy.MAXIMIZE):
+                 strategy=Strategy.MAXIMIZE,
+                 crossover_method=crossover.one_point,
+                 selection_method=selection.tournament_selection):
         self.model = model
         self.initial_population = initial_population
         self.dataset = dataset
@@ -52,6 +36,8 @@ class KerasOptimizer:
         self.mutation_probability = mutation_probability
         self.train_function = train_function
         self.strategy = strategy
+        self.crossover_method = crossover_method
+        self.selection_method = selection_method
 
         self.__select_optimizer_strategy(strategy)
 
@@ -69,13 +55,6 @@ class KerasOptimizer:
             del globals()["Individual"]
 
         creator.create("Individual", list, fitness=creator.FitnessFunc)
-
-    def crossover(self, individual1, individual2):
-        return tools.cxOnePoint(individual1, individual2)
-
-    def selection(self, individuals, k, tournsize, prob, fit_Attr='fitness'):
-        chosen = tools.selTournament(individuals, k, tournsize, fit_Attr)
-        return chosen
 
     def __add_hyperparameter(self, hyperparam_name, hyperparam_value):
         self.toolbox.register(hyperparam_name, random.choice, hyperparam_value)
@@ -98,9 +77,9 @@ class KerasOptimizer:
         # define the population to be a list of individuals
         self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
         self.toolbox.register("evaluate", self.evaluate)
-        self.toolbox.register("mate", self.crossover)
+        self.toolbox.register("mate", self.crossover_method)
         self.toolbox.register("mutate", self.mutate)
-        self.toolbox.register("select", self.selection, tournsize=3, prob=1.0)
+        self.toolbox.register("select", self.selection_method, tournsize=3)
 
         population_size = self.initial_population
         number_of_generations = 4
@@ -117,8 +96,9 @@ class KerasOptimizer:
                                        verbose=True)
 
         best_parameters = hof[0]  # save the optimal set of parameters
-        print('Best parameters:', best_parameters)
-        stats = Stats(best_params=best_parameters)
+        best_params_named = namedtuple("HyperParams", self.hyperparam_index_dict.keys())(
+            *best_parameters)
+        stats = Stats(best_params=best_params_named)
         return stats
 
     def evaluate(self, individual):
