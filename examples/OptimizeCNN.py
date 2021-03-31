@@ -1,5 +1,8 @@
 import os
 
+import tensorflow as tf
+from tensorflow import keras
+
 from keras import models, layers
 from keras.applications import VGG16
 from keras.optimizers import SGD
@@ -8,10 +11,35 @@ from keras.preprocessing.image import ImageDataGenerator
 from pykopt.KerasOptimizer import KerasOptimizer
 from pykopt.Strategy import Strategy
 
+import keras
+from keras.datasets import mnist
+from keras.layers.core import Flatten, Dense, Dropout
+from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
+from keras.models import Sequential, Model
+from keras.layers.convolutional import Conv2D
+from keras.layers.convolutional import MaxPooling2D
+from keras.optimizers import SGD, Adam, RMSprop
+from keras.layers import Dense, Dropout
+from keras.optimizers import RMSprop
+from imutils import paths
+from sklearn.model_selection import train_test_split
+from keras.preprocessing.image import img_to_array
+import random
+import cv2
+import os
+import numpy as np
+from keras import backend as K
+from keras.applications.vgg16 import VGG16
+from keras.preprocessing.image import ImageDataGenerator
+from keras import models
+from keras import layers
+from keras import optimizers
+import ssl
 
+
+# %% [code]
 def custom_model():
-    num_of_classes = 2
-    vgg = VGG16(weights='imagenet', classes=num_of_classes, include_top=False, input_shape=(224, 224, 3))
+    vgg = VGG16(weights='imagenet', classes=2, include_top=False, input_shape=(224, 224, 3))
 
     # Create the model
     model = models.Sequential()
@@ -22,16 +50,17 @@ def custom_model():
     model.add(layers.Flatten())
     model.add(layers.Dense(1024, activation='relu'))
     model.add(layers.Dropout(0.5))
-    model.add(layers.Dense(num_of_classes, activation='softmax'))
+    model.add(layers.Dense(1, activation='sigmoid'))
 
-    # model.summary()
+    model.summary()
 
     return model
 
 
+# %% [code]
 def train_model(hyperparams):
-    train_data = "C:/Users/asgksta/PlantDiseaseDetection/data/datasetsingle/Train"
-    validation_data = "C:/Users/asgksta/PlantDiseaseDetection/data/datasetsingle/Validation"
+    train_data = "/kaggle/input/covidct/Covid-CT/Train"
+    validation_data = "/kaggle/input/covidct/Covid-CT/Test"
 
     batch_size = hyperparams["batch_size"]
     EPOCHS = hyperparams["epochs"]
@@ -53,7 +82,7 @@ def train_model(hyperparams):
         color_mode='rgb',
         batch_size=batch_size,
         shuffle=True,
-        class_mode='categorical')  # since we use binary_crossentropy loss, we need binary labels
+        class_mode='binary')  # since we use binary_crossentropy loss, we need binary labels
 
     # this is the augmentation configurationw e will use for testing:
     # only rescaling
@@ -66,7 +95,7 @@ def train_model(hyperparams):
         batch_size=batch_size,
         color_mode='rgb',
         shuffle=False,
-        class_mode='categorical')
+        class_mode='binary')
 
     nb_train_samples = len(train_generator.filenames)
     nb_validation_samples = len(validation_generator.filenames)
@@ -75,7 +104,7 @@ def train_model(hyperparams):
     print("[INFO] compiling model...")
     model = custom_model()
     opt = SGD(lr=INIT_LR, decay=decay_rate, momentum=momentum, nesterov=True)
-    model.compile(loss="categorical_crossentropy", optimizer=opt, metrics=["accuracy"])
+    model.compile(loss="binary_crossentropy", optimizer=opt, metrics=["accuracy"])
 
     history = model.fit_generator(
         train_generator,
@@ -88,12 +117,13 @@ def train_model(hyperparams):
     return history.history['val_accuracy']
 
 
+# %% [code]
 def run():
-    optimizer = KerasOptimizer(max_iteration=100, initial_population=20, mutation_probability=0.01, crossover_prob=0.7)
+    optimizer = KerasOptimizer(max_iteration=10, initial_population=10, mutation_probability=0.01, crossover_prob=0.7)
 
     optimizer.select_optimizer_strategy(Strategy.MAXIMIZE)
-    optimizer.add_hyperparameter('batch_size', [16, 32, 64,128])
-    optimizer.add_hyperparameter('epochs', [1, 5, 10,20])
+    optimizer.add_hyperparameter('batch_size', [16, 32, 64, 128])
+    optimizer.add_hyperparameter('epochs', [1, 5, 10, 20])
     optimizer.add_hyperparameter('learning_rate', [0.001, 0.01, 0.1])
     optimizer.add_hyperparameter('decay', [1e-6, 1e-7])
     optimizer.add_hyperparameter('momentum', [0.9, 0.0])

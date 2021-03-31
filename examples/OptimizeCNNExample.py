@@ -3,10 +3,9 @@ from keras.layers import Conv2D, MaxPooling2D
 from keras.layers import Dense, Dropout, Flatten
 from keras.models import Sequential
 from keras.optimizers import SGD
-from optimizer.KerasOptimizer import KerasOptimizer
-from optimizer.Strategy import Strategy
+from pykopt.KerasOptimizer import KerasOptimizer
+from pykopt.Strategy import Strategy
 import os
-
 
 def custom_model():
     num_classes = 10
