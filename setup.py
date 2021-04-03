@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pykopt",
-    version="0.1.3",
+    version="0.1.5",
     author="Kazim SOYLU",
     author_email="kazimsoylu@gmail.com",
     description="Evolutionary Keras Hyperparameter Optimizer",
