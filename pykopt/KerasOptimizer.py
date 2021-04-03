@@ -10,6 +10,8 @@ from pykopt.Strategy import Strategy
 from pykopt.operator import crossover, selection
 from pykopt.stats import Stats
 
+from pykopt.util.logger import logger
+
 
 class KerasOptimizer:
     hyperparam_list = []
@@ -102,8 +104,8 @@ class KerasOptimizer:
         return stats
 
     def evaluate(self, individual):
-        print('START---------------------------------------------')
-        print('Individual:', individual)
+        logger.info('START---------------------------------------------')
+        logger.info('Individual:', individual)
         batch_size = individual[self.hyperparam_index_dict['batch_size']]
         epochs = individual[self.hyperparam_index_dict['epochs']]
         learning_rate = individual[self.hyperparam_index_dict['learning_rate']]
@@ -112,10 +114,9 @@ class KerasOptimizer:
         hyperparams_object = namedtuple("HyperParams", self.hyperparam_index_dict.keys())(
             *individual)
         score = self.train_function(self.model, hyperparams_object)
-        print('Score:', score, 'Individual:', individual)
-        print('END--------------------------------------')
+        logger.info('Score:', score, 'Individual:', individual)
+        logger.info('END--------------------------------------')
         return score
-        print('END--------------------------------------')
 
     def mutate(self, individual):
         gene = random.randint(0, individual.__len__() - 1)
